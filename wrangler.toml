@@ -1,0 +1,4 @@
+name = "aescretsanta"
+main = "alter_ego_worker.js"
+compatibility_date = "2026-11-20"
+
