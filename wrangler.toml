@@ -2,3 +2,7 @@ name = "aescretsanta"
 main = "alter_ego_worker.js"
 compatibility_date = "2026-11-20"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "alter_ego"
+database_id = "329bdf51-7169-4de4-9a42-0154a7b8ab6e"
