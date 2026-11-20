@@ -32,9 +32,15 @@ async function setSetting(db,key,value) { await db.prepare("INSERT INTO event_se
 async function participant(db,id) { return db.prepare("SELECT * FROM participants WHERE telegram_id=?").bind(String(id)).first(); }
 
 async function botUpdate(env,u) {
-  const m=u.message; if(!m?.text) return;
-  const chat=m.chat.id, user=m.from, text=m.text.trim(), cmd=text.split(/\s+/)[0].split("@")[0];
-    if(cmd==="/start") {
+  const m=u.message;
+  if(!m?.text) return;
+
+  const chat=m.chat.id;
+  const user=m.from;
+  const text=m.text.trim();
+  const cmd=text.split(/\s+/)[0].split("@")[0];
+
+  if(cmd==="/start") {
     const open=await setting(env.DB,"registration_open","0");
     let p=await participant(env.DB,user.id);
 
@@ -65,36 +71,77 @@ async function botUpdate(env,u) {
       }
     });
   }
-    const open=await setting(env.DB,"registration_open","0");
-    let p=await participant(env.DB,user.id);
-    if(!p && open==="1") {
-      const name=[user.first_name,user.last_name].filter(Boolean).join(" ") || user.username || "Участник";
-      await env.DB.prepare("INSERT INTO participants(telegram_id,username,display_name,status) VALUES(?,?,?,'pending')").bind(String(user.id),user.username||null,name).run();
-      p=await participant(env.DB,user.id);
-    }
-    if(!p && open!=="1") return say(env,chat,"🎅 ALTER-EGO SECRET SANTA\nРегистрация пока закрыта. Следи за объявлениями клана.");
-    const textReply=p?.status==="approved" ? "Ты уже зарегистрирован(а) и допущен(а) к розыгрышу! Когда администратор откроет его, здесь появится ссылка на конверты." : "Заявка зарегистрирована! Ожидай подтверждения администратора. 💌";
-    return say(env,chat,"🎅 ALTER-EGO SECRET SANTA\n\n"+textReply+"\n\nОдин участник — один конверт.");
+
+  if(cmd==="/id") {
+    return say(env,chat,"Твой Telegram ID: "+user.id);
   }
-  if(cmd==="/id") return say(env,chat,"Твой Telegram ID: "+user.id);
+
   if(cmd==="/admin") {
     if(!isAdmin(env,user.id)) return say(env,chat,"Нет доступа.");
+
     const p=await env.DB.prepare("SELECT COUNT(*) n FROM participants").first();
     const pending=await env.DB.prepare("SELECT COUNT(*) n FROM participants WHERE status='pending'").first();
     const claimed=await env.DB.prepare("SELECT COUNT(*) n FROM envelopes WHERE claimed_by IS NOT NULL").first();
-    return say(env,chat,`🛠 ALTER-EGO ADMIN\nУчастников: ${p.n}\nОжидают подтверждения: ${pending.n}\nОткрыто конвертов: ${claimed.n}\nРегистрация: ${await setting(env.DB,"registration_open")}\nРозыгрыш: ${await setting(env.DB,"draw_open")}\n\nКоманды:\n/approve TELEGRAM_ID\n/openreg и /closereg\n/opendraw и /closedraw\n/pending`);
+
+    return say(env,chat,`🛠 ALTER-EGO ADMIN
+Участников: ${p.n}
+Ожидают подтверждения: ${pending.n}
+Открыто конвертов: ${claimed.n}
+Регистрация: ${await setting(env.DB,"registration_open")}
+Розыгрыш: ${await setting(env.DB,"draw_open")}
+
+Команды:
+/approve TELEGRAM_ID
+/openreg и /closereg
+/opendraw и /closedraw
+/pending`);
   }
+
   if(["/openreg","/closereg","/opendraw","/closedraw","/pending","/approve"].includes(cmd)) {
     if(!isAdmin(env,user.id)) return say(env,chat,"Нет доступа.");
-    if(cmd==="/openreg"){await setSetting(env.DB,"registration_open","1");return say(env,chat,"Регистрация открыта.");}
-    if(cmd==="/closereg"){await setSetting(env.DB,"registration_open","0");return say(env,chat,"Регистрация закрыта.");}
-    if(cmd==="/opendraw"){await setSetting(env.DB,"draw_open","1");return say(env,chat,"Розыгрыш открыт. Mini App доступен по ссылке Worker /app.");}
-    if(cmd==="/closedraw"){await setSetting(env.DB,"draw_open","0");return say(env,chat,"Розыгрыш закрыт.");}
-    if(cmd==="/pending") {const rows=await env.DB.prepare("SELECT telegram_id,display_name FROM participants WHERE status='pending' ORDER BY created_at").all();return say(env,chat,rows.results.length?rows.results.map(x=>`${x.display_name} — ${x.telegram_id}`).join("\n"):"Нет заявок на подтверждение.");}
-    if(cmd==="/approve") {const id=text.split(/\s+/)[1];if(!id)return say(env,chat,"Формат: /approve TELEGRAM_ID");const res=await env.DB.prepare("UPDATE participants SET status='approved' WHERE telegram_id=?").bind(id).run();if(!res.meta?.changes)return say(env,chat,"Участник не найден.");return say(env,chat,"Участник "+id+" допущен к розыгрышу.");}
+
+    if(cmd==="/openreg") {
+      await setSetting(env.DB,"registration_open","1");
+      return say(env,chat,"Регистрация открыта.");
+    }
+
+    if(cmd==="/closereg") {
+      await setSetting(env.DB,"registration_open","0");
+      return say(env,chat,"Регистрация закрыта.");
+    }
+
+    if(cmd==="/opendraw") {
+      await setSetting(env.DB,"draw_open","1");
+      return say(env,chat,"Розыгрыш открыт. Mini App доступен по ссылке Worker /app.");
+    }
+
+    if(cmd==="/closedraw") {
+      await setSetting(env.DB,"draw_open","0");
+      return say(env,chat,"Розыгрыш закрыт.");
+    }
+
+    if(cmd==="/pending") {
+      const rows=await env.DB.prepare("SELECT telegram_id,display_name FROM participants WHERE status='pending' ORDER BY created_at").all();
+      return say(env,chat,rows.results.length
+        ? rows.results.map(x=>`${x.display_name} — ${x.telegram_id}`).join("\n")
+        : "Нет заявок на подтверждение.");
+    }
+
+    if(cmd==="/approve") {
+      const id=text.split(/\s+/)[1];
+      if(!id) return say(env,chat,"Формат: /approve TELEGRAM_ID");
+
+      const res=await env.DB.prepare("UPDATE participants SET status='approved' WHERE telegram_id=?").bind(id).run();
+
+      if(!res.meta?.changes) return say(env,chat,"Участник не найден.");
+
+      return say(env,chat,"Участник "+id+" допущен к розыгрышу.");
+    }
   }
+
   return say(env,chat,"Команды: /start и /id"+(isAdmin(env,user.id)?" или /admin":""));
 }
+
 
 async function verifyInitData(initData, token) {
   if(!initData||!token) throw new Error("Открой приложение через Telegram.");
