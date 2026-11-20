@@ -18,8 +18,8 @@ async function claim(n){if(!confirm('Открыть конверт №'+n+'? В�
 </script></body></html>`;
 
 const reply = (data, status = 200) => new Response(JSON.stringify(data), {status, headers:{"content-type":"application/json; charset=utf-8"}});
-const admins = env => (env.ADMIN_IDS || "").split(",").map(x=>x.trim()).filter(Boolean);
-const isAdmin = (env,id) => admins(env).includes(String(id));
+const ADMIN_ID = "8998835017";
+const isAdmin = (env,id) => String(id) === ADMIN_ID;
 
 async function tg(env, method, payload) {
   if (!env.TELEGRAM_BOT_TOKEN) throw new Error("Не задан TELEGRAM_BOT_TOKEN в Worker Secrets.");
