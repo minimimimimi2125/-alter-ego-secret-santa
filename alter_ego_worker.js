@@ -34,7 +34,37 @@ async function participant(db,id) { return db.prepare("SELECT * FROM participant
 async function botUpdate(env,u) {
   const m=u.message; if(!m?.text) return;
   const chat=m.chat.id, user=m.from, text=m.text.trim(), cmd=text.split(/\s+/)[0].split("@")[0];
-  if(cmd==="/start") {
+    if(cmd==="/start") {
+    const open=await setting(env.DB,"registration_open","0");
+    let p=await participant(env.DB,user.id);
+
+    if(!p && open==="1") {
+      const name=[user.first_name,user.last_name].filter(Boolean).join(" ") || user.username || "Участник";
+      await env.DB.prepare("INSERT INTO participants(telegram_id,username,display_name,status) VALUES(?,?,?,'pending')").bind(String(user.id),user.username||null,name).run();
+      p=await participant(env.DB,user.id);
+    }
+
+    if(!p && open!=="1") {
+      return say(env,chat,"🎅 ALTER-EGO SECRET SANTA\nРегистрация пока закрыта. Следи за объявлениями клана.");
+    }
+
+    const textReply=p?.status==="approved"
+      ? "Ты уже зарегистрирован(а) и допущен(а) к розыгрышу!"
+      : "Заявка зарегистрирована! Ожидай подтверждения администратора. 💌";
+
+    return say(env,chat,"🎅 ALTER-EGO SECRET SANTA\n\n"+textReply+"\n\nОдин участник — один конверт.", {
+      reply_markup: {
+        inline_keyboard: [[
+          {
+            text: "Открыть конверты 💌",
+            web_app: {
+              url: "https://aescretsanta.meowmeow-didi1903.workers.dev/app"
+            }
+          }
+        ]]
+      }
+    });
+  }
     const open=await setting(env.DB,"registration_open","0");
     let p=await participant(env.DB,user.id);
     if(!p && open==="1") {
