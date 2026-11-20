@@ -41,6 +41,10 @@ async function claim(n) {
 }
 
 load();
+load();
+</script></body></html>`;
+
+const reply =</script></body></html>`;
 
 const reply = (data, status = 200) => new Response(JSON.stringify(data), {status, headers:{"content-type":"application/json; charset=utf-8"}});
 const ADMIN_ID = "8998835017";
