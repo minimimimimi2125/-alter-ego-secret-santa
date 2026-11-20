@@ -14,8 +14,33 @@ const APP_HTML = `<!doctype html>
 const tg=window.Telegram?.WebApp;tg?.ready();tg?.expand();const statusEl=document.getElementById('status'),grid=document.getElementById('grid'),result=document.getElementById('result'),prize=document.getElementById('prize');
 async function api(path,extra={}){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({initData:tg?.initData||'',...extra})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');return d}
 async function load(){try{const d=await api('/api/envelopes');statusEl.textContent=d.message||'Выбери один закрытый конверт';grid.innerHTML='';if(d.claimed){result.style.display='block';prize.textContent=d.claimed.prize_title;return}d.envelopes.forEach(n=>{const b=document.createElement('button');b.className='env';b.innerHTML='✉️<small>КОНВЕРТ №'+n+'</small>';b.onclick=()=>claim(n);grid.appendChild(b)})}catch(e){statusEl.textContent=e.message}}
-async function claim(n){if(!confirm('Открыть конверт №'+n+'? Выбор будет окончательным.'))return;statusEl.textContent='Открываем…';try{const d=await api('/api/claim',{envelope:n});grid.innerHTML='';result.style.display='block';prize.textContent=d.prize_title;statusEl.textContent='Твой подарок определён ❤️';tg?.HapticFeedback?.notificationOccurred('success')}catch(e){statusEl.textContent=e.message;load()}}load();
-</script></body></html>`;
+let claiming = false;
+async function claim(n) {
+  if (claiming) return;
+
+  if (!confirm('Открыть конверт №' + n + '? Выбор будет окончательным.')) return;
+
+  claiming = true;
+  const buttons = grid.querySelectorAll('button');
+  buttons.forEach(b => b.disabled = true);
+  statusEl.textContent = 'Открываем…';
+
+  try {
+    const d = await api('/api/claim', { envelope: n });
+    grid.innerHTML = '';
+    result.style.display = 'block';
+    prize.textContent = d.prize_title;
+    statusEl.textContent = 'Твой подарок определён ❤️';
+    tg?.HapticFeedback?.notificationOccurred('success');
+  } catch (e) {
+    statusEl.textContent = e.message;
+    await load();
+  } finally {
+    claiming = false;
+  }
+}
+
+load();
 
 const reply = (data, status = 200) => new Response(JSON.stringify(data), {status, headers:{"content-type":"application/json; charset=utf-8"}});
 const ADMIN_ID = "8998835017";
