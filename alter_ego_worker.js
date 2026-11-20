@@ -1,584 +1,102 @@
-
 // ALTER-EGO SECRET SANTA — Cloudflare Worker
-// Bindings:
-// DB: D1 database alter_ego
-// TELEGRAM_BOT_TOKEN: Worker Secret
+// D1 binding: DB | Secret: TELEGRAM_BOT_TOKEN
+// Optional Secret: TELEGRAM_WEBHOOK_SECRET
+// Keeps existing envelope prize assignments. Never opens draw/reveal automatically.
 
 const ADMIN_ID = "8998835017";
 const APP_URL = "https://aescretsanta.meowmeow-didi1903.workers.dev/app";
 
-const APP_HTML = `<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#120d1b">
-<title>ALTER-EGO SECRET SANTA</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<style>
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;padding:28px 18px;color:#fff;text-align:center;font-family:system-ui;background:radial-gradient(ellipse at top,#49305e,#120d1b 68%)}
-h1{letter-spacing:2px;font-size:25px;margin:8px 0}
-.sub{color:#d2bfdf;margin-bottom:24px}
-#status{min-height:28px;color:#eadcf5;margin:12px 0}
-.panel{max-width:440px;margin:20px auto;padding:22px;border:1px solid #a17cba;border-radius:18px;background:#291d38}
-input,textarea{width:100%;margin:8px 0;padding:14px;border:1px solid #a17cba;border-radius:10px;background:#160f20;color:white;font:inherit}
-textarea{min-height:100px;resize:vertical}
-button{border:1px solid #c5a0df;border-radius:12px;padding:13px 18px;background:linear-gradient(145deg,#65447c,#261a35);color:white;font:inherit}
-button:disabled{opacity:.5}
-.primary{width:100%;margin-top:12px;background:linear-gradient(145deg,#9164ad,#503467)}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:440px;margin:auto}
-.env{min-height:112px;font-size:30px}
-.env small{display:block;font-size:11px;color:#eadcf5;margin-top:5px}
-#result{display:none;margin:24px auto 0;max-width:440px;padding:22px;border:1px solid #c5a0df;border-radius:18px;background:#291d38}
-#prize{display:block;color:#f4dcff;font-size:23px;margin-top:10px}
-.hint{font-size:13px;color:#bcaacb;margin-top:22px}
-</style>
-</head>
-<body>
-<h1>ALTER-EGO</h1>
-<div class="sub">SECRET SANTA 🎅</div>
-<div id="status">Подключаемся…</div>
-
-<section id="registration" class="panel" hidden>
-  <h3>ЗАЯВКА НА УЧАСТИЕ 💌</h3>
-  <input id="pubgId" placeholder="PUBG ID" inputmode="numeric">
-  <input id="pubgNickname" placeholder="Никнейм в PUBG">
-  <textarea id="wish" placeholder="Твоё новогоднее пожелание"></textarea>
-  <button class="primary" id="submitRegistration">ОТПРАВИТЬ ЗАЯВКУ</button>
-</section>
-
-<section id="waiting" class="panel" hidden>
-  <h3>ЗАЯВКА ОТПРАВЛЕНА 💌</h3>
-  <p>Твоё письмо уже у администрации ALTER-EGO.</p>
-  <strong>ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ</strong>
-  <p>Мы сообщим тебе, когда заявка будет рассмотрена.</p>
-</section>
-
-<div class="grid" id="grid"></div>
-<div id="result">ТВОЙ КОНВЕРТ 💌<strong id="prize"></strong></div>
-<div class="hint">Один участник — один конверт. Выбор нельзя отменить.</div>
-
+const APP_HTML = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#120d1b"><title>ALTER-EGO SECRET SANTA</title><script src="https://telegram.org/js/telegram-web-app.js"></script><style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:25px 16px;color:#fff;text-align:center;font-family:system-ui;background:radial-gradient(ellipse at top,#49305e,#120d1b 68%)}h1{letter-spacing:2px}.sub{color:#d2bfdf;margin-bottom:20px}#status{min-height:30px;color:#eadcf5}.panel,.wish{max-width:440px;margin:18px auto;padding:20px;border:1px solid #a17cba;border-radius:18px;background:#291d38}input,textarea{width:100%;margin:8px 0;padding:14px;border:1px solid #a17cba;border-radius:10px;background:#160f20;color:white;font:inherit}textarea{min-height:100px}button{border:1px solid #c5a0df;border-radius:12px;padding:12px 15px;background:linear-gradient(145deg,#65447c,#261a35);color:white;font:inherit}.primary{width:100%;margin-top:12px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:440px;margin:18px auto}.env{min-height:105px;font-size:28px}.env small{display:block;font-size:11px}#result{display:none}.wish{text-align:left;white-space:pre-wrap}.reactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.reactions button{padding:7px}
+</style></head><body><h1>ALTER-EGO</h1><div class="sub">SECRET SANTA 🎅</div><div id="status">Подключаемся…</div>
+<section id="registration" class="panel" hidden><h3>ЗАЯВКА НА УЧАСТИЕ 💌</h3><input id="pubgId" placeholder="PUBG ID" maxlength="30"><input id="pubgNickname" placeholder="Никнейм в PUBG" maxlength="50"><textarea id="wish" placeholder="Твоё новогоднее пожелание" maxlength="500"></textarea><button class="primary" id="submit">ОТПРАВИТЬ ЗАЯВКУ</button></section>
+<section id="waiting" class="panel" hidden><h3>ЗАЯВКА ОТПРАВЛЕНА 💌</h3><p>Твоё письмо уже у администрации ALTER-EGO.</p><b>ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ</b><p>Мы сообщим тебе, когда заявка будет рассмотрена.</p></section>
+<section id="home" class="panel" hidden><b id="memberStatus"></b><p id="myEnvelope"></p><button id="reveal" class="primary" hidden>РАСКРЫТЬ МОЙ ПОДАРОК 🎁</button></section>
+<div id="grid" class="grid"></div><section id="result" class="panel"><div>ТВОЙ ПОДАРОК 💌</div><strong id="prize"></strong><button id="letterButton" class="primary" hidden>ПОЛУЧИТЬ ПОСЛАНИЕ ALTER-EGO 💌</button><div id="letter" hidden><p>ALTER-EGO<br>SYSTEM MESSAGE: 2027<br>Обновление успешно установлено!</p><p>Удача: +100%<br>Денежный баланс: пусть наконец порадует.<br>Нервы: защита от случайных тиммейтов.<br>Любовь: без багов и токсичных обновлений.<br>Здоровье: максимальный уровень.<br>Воспоминания: только легендарные.</p><p>Спасибо, что ты в нашем клане ❤️<br>Оставайся и дальше тут, и в нашем сердце 🧡<br>С любовью, ALTER-EGO 👑</p><button id="share">ПОДЕЛИТЬСЯ РЕЗУЛЬТАТОМ</button><button id="private">ОСТАВИТЬ СЕБЕ</button></div></section>
+<section id="wall" hidden><h3>WISH WALL ✨</h3><div id="wishes"></div></section><p><button id="wallTab">WISH WALL</button> <button id="meTab">МОЁ УЧАСТИЕ</button></p><small>Один участник — один конверт — один сюрприз.</small>
 <script>
-const tg=window.Telegram?.WebApp;
-tg?.ready();
-tg?.expand();
+const tg=window.Telegram?.WebApp;tg?.ready();tg?.expand();const $=id=>document.getElementById(id);let busy=false;
+async function api(path,data={}){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({initData:tg?.initData||'',...data})});const d=await r.json();if(!r.ok)throw Error(d.error||'Ошибка');return d}
+function hide(){['registration','waiting','home','wall'].forEach(x=>$(x).hidden=true);$('grid').innerHTML='';$('result').style.display='none'}
+async function start(){hide();try{const d=await api('/api/profile');if(!d.participant){if(!d.registrationOpen){$('status').textContent='Регистрация пока закрыта.';return}$('registration').hidden=false;$('status').textContent='Заполни заявку на участие';return}if(!d.complete){$('pubgId').value=d.participant.pubg_id||'';$('pubgNickname').value=d.participant.pubg_nickname||'';$('wish').value=d.participant.wish||'';$('registration').hidden=false;$('status').textContent='Заполни данные для участия';return}if(d.participant.status!=='approved'){$('waiting').hidden=false;$('status').textContent='Заявка ожидает подтверждения';return}$('home').hidden=false;$('memberStatus').textContent='ТЫ В ИГРЕ! ❤️';await loadEnvelopes()}catch(e){$('status').textContent=e.message}}
+$('submit').onclick=async()=>{const v={pubg_id:$('pubgId').value.trim(),pubg_nickname:$('pubgNickname').value.trim(),wish:$('wish').value.trim()};if(!v.pubg_id||!v.pubg_nickname||!v.wish){$('status').textContent='Заполни все три поля.';return}try{await api('/api/register',v);await start()}catch(e){$('status').textContent=e.message}};
+async function loadEnvelopes(){const d=await api('/api/envelopes');$('grid').innerHTML='';if(d.claimed){$('myEnvelope').textContent='Твой конверт №'+d.claimed.envelope_number;if(d.claimed.revealed_at){showPrize(d.claimed)}else{$('reveal').hidden=false;$('status').textContent='Твой подарок уже ждёт.'}return}$('reveal').hidden=true;$('status').textContent=d.message||'Выбери один закрытый конверт';d.envelopes.forEach(n=>{const b=document.createElement('button');b.className='env';b.innerHTML='✉️<small>КОНВЕРТ №'+n+'</small>';b.onclick=()=>claim(n);$('grid').append(b)})}
+async function claim(n){if(busy||!confirm('Выбрать конверт №'+n+'? Выбор окончательный.'))return;busy=true;try{await api('/api/claim',{envelope:n});await loadEnvelopes()}catch(e){$('status').textContent=e.message}finally{busy=false}}
+$('reveal').onclick=async()=>{try{const d=await api('/api/reveal');showPrize(d)}catch(e){$('status').textContent=e.message}};
+function showPrize(d){$('result').style.display='block';$('prize').textContent=d.prize_title||'Сюрприз';$('letterButton').hidden=false;$('letter').hidden=true;$('reveal').hidden=true}
+$('letterButton').onclick=()=>{$('letter').hidden=false;$('letterButton').hidden=true};
+async function publication(visible){try{await api('/api/publication',{visible});$('status').textContent=visible?'Результат опубликован!':'Результат оставлен личным.'}catch(e){$('status').textContent=e.message}}
+$('share').onclick=()=>publication(true);$('private').onclick=()=>publication(false);
+$('wallTab').onclick=async()=>{hide();$('wall').hidden=false;try{const d=await api('/api/wishes');$('wishes').innerHTML='';d.wishes.forEach(w=>{const c=document.createElement('div');c.className='wish';const p=document.createElement('div');p.textContent=w.wish;c.append(p);const r=document.createElement('div');r.className='reactions';['❤️','😂','🔥','🥹','🎄','👑','✨'].forEach(e=>{const b=document.createElement('button');b.textContent=e+' '+(w.reactions[e]||0);b.onclick=async()=>{await api('/api/react',{wish_id:w.id,emoji:e});$('wallTab').click()};r.append(b)});c.append(r);$('wishes').append(c)});$('status').textContent=d.message||'Пожелания участников'}catch(e){$('status').textContent=e.message}};
+$('meTab').onclick=start;start();
+</script></body></html>`;
 
-const statusEl=document.getElementById('status');
-const registration=document.getElementById('registration');
-const waiting=document.getElementById('waiting');
-const grid=document.getElementById('grid');
-const result=document.getElementById('result');
-const prize=document.getElementById('prize');
-
-async function api(path,extra={}) {
-  const r=await fetch(path,{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-    body:JSON.stringify({initData:tg?.initData||'',...extra})
-  });
-  const d=await r.json();
-  if(!r.ok) throw new Error(d.error||'Ошибка');
-  return d;
+const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8"}});
+const isAdmin=id=>String(id)===ADMIN_ID;
+async function tg(env,method,payload){if(!env.TELEGRAM_BOT_TOKEN)throw Error("Не задан TELEGRAM_BOT_TOKEN.");const r=await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const d=await r.json();if(!d.ok)throw Error(d.description||"Telegram API error");return d.result}
+async function say(env,id,text,extra={}){return tg(env,"sendMessage",{chat_id:id,text,...extra})}
+async function setting(db,key,fallback="0"){const r=await db.prepare("SELECT setting_value FROM event_settings WHERE setting_key=?").bind(key).first();return r?.setting_value??fallback}     
+async function setSetting(db,key,value){await db.prepare("INSERT INTO event_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value").bind(key,String(value)).run()}
+async function participant(db,id){return db.prepare("SELECT * FROM participants WHERE telegram_id=?").bind(String(id)).first()}
+async function ensureSchema(db){
+ for(const sql of [
+ "CREATE TABLE IF NOT EXISTS wish_reactions(id INTEGER PRIMARY KEY AUTOINCREMENT,wish_owner_id TEXT NOT NULL,reactor_id TEXT NOT NULL,emoji TEXT NOT NULL,created_at TEXT DEFAULT(datetime('now')),UNIQUE(wish_owner_id,reactor_id))",
+ "CREATE TABLE IF NOT EXISTS result_publications(telegram_id TEXT PRIMARY KEY,visible INTEGER NOT NULL DEFAULT 0,updated_at TEXT DEFAULT(datetime('now')))",
+ "CREATE TABLE IF NOT EXISTS admin_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,admin_id TEXT NOT NULL,action TEXT NOT NULL,details TEXT,created_at TEXT DEFAULT(datetime('now')))",
+ "CREATE TABLE IF NOT EXISTS gift_transfers(id INTEGER PRIMARY KEY AUTOINCREMENT,envelope_number INTEGER NOT NULL,from_user TEXT,to_user TEXT NOT NULL,admin_id TEXT NOT NULL,created_at TEXT DEFAULT(datetime('now')))",
+ "CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY AUTOINCREMENT,telegram_id TEXT,message TEXT NOT NULL,sent_at TEXT DEFAULT(datetime('now')),kind TEXT)"
+ ])await db.prepare(sql).run();
+ const ec=await db.prepare("PRAGMA table_info(envelopes)").all(), en=new Set(ec.results.map(x=>x.name));
+ if(!en.has("revealed_at"))await db.prepare("ALTER TABLE envelopes ADD COLUMN revealed_at TEXT").run();
+ if(!en.has("original_claimed_by"))await db.prepare("ALTER TABLE envelopes ADD COLUMN original_claimed_by TEXT").run();
+ const pc=await db.prepare("PRAGMA table_info(participants)").all(), pn=new Set(pc.results.map(x=>x.name));
+ for(const c of ["pubg_id","pubg_nickname","wish"])if(!pn.has(c))await db.prepare(`ALTER TABLE participants ADD COLUMN ${c} TEXT`).run();
 }
-
-function hideSections() {
-  registration.hidden=true;
-  waiting.hidden=true;
-  grid.innerHTML='';
-  result.style.display='none';
+async function verifyInitData(data,token){
+ if(!data||!token)throw Error("Открой приложение через Telegram.");const p=new URLSearchParams(data),hash=p.get("hash");if(!hash)throw Error("Нет подписи Telegram.");p.delete("hash");
+ const check=[...p.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${k}=${v}`).join("\n"),enc=new TextEncoder();
+ const k1=await crypto.subtle.importKey("raw",enc.encode("WebAppData"),{name:"HMAC",hash:"SHA-256"},false,["sign"]),secret=await crypto.subtle.sign("HMAC",k1,enc.encode(token));
+ const k2=await crypto.subtle.importKey("raw",secret,{name:"HMAC",hash:"SHA-256"},false,["sign"]),sig=await crypto.subtle.sign("HMAC",k2,enc.encode(check));
+ if([...new Uint8Array(sig)].map(x=>x.toString(16).padStart(2,"0")).join("")!==hash)throw Error("Подпись Telegram не прошла проверку.");
+ const auth=Number(p.get("auth_date")||0);if(!auth||Date.now()/1000-auth>86400)throw Error("Сессия устарела. Закрой и снова открой приложение.");
+ const user=JSON.parse(p.get("user")||"{}");if(!user.id)throw Error("Не найден Telegram ID.");return user;
 }
-
-async function startApp() {
-  hideSections();
-  try {
-    const d=await api('/api/profile');
-
-    if(!d.participant) {
-      registration.hidden=false;
-      statusEl.textContent='Заполни заявку на участие';
-      return;
-    }
-
-    if(!d.complete) {
-      document.getElementById('pubgId').value=d.participant.pubg_id||'';
-      document.getElementById('pubgNickname').value=d.participant.pubg_nickname||'';
-      document.getElementById('wish').value=d.participant.wish||'';
-      registration.hidden=false;
-      statusEl.textContent='Заполни данные для участия';
-      return;
-    }
-
-    if(d.participant.status!=='approved') {
-      waiting.hidden=false;
-      statusEl.textContent='Заявка ожидает подтверждения';
-      return;
-    }
-
-    statusEl.textContent='Заявка одобрена. Добро пожаловать!';
-    await loadEnvelopes();
-  } catch(e) {
-    statusEl.textContent=e.message;
-  }
+async function apiContext(req,env){const body=await req.json(),user=await verifyInitData(body.initData,env.TELEGRAM_BOT_TOKEN);return{body,user}}
+async function active(db){if(await setting(db,"pause_all","0")==="1")throw Error("Событие временно приостановлено администрацией.")}
+async function approved(db,id){const p=await participant(db,id);if(!p)throw Error("Сначала заполни заявку.");if(p.status!=="approved")throw Error("Заявка ещё не подтверждена администратором.");return p}
+async function botUpdate(env,u){
+ const m=u.message;if(!m?.text)return;const chat=m.chat.id,user=m.from,text=m.text.trim(),cmd=text.split(/\s+/)[0].split("@")[0];
+ if(cmd==="/start"){const p=await participant(env.DB,user.id);if(!p&&await setting(env.DB,"registration_open","0")!=="1")return say(env,chat,"Регистрация ALTER-EGO пока закрыта. Следи за объявлениями.");return say(env,chat,"🎅 ALTER-EGO SECRET SANTA\nОткрой приложение, чтобы заполнить заявку или посмотреть участие.",{reply_markup:{inline_keyboard:[[{text:"Открыть приложение 💌",web_app:{url:APP_URL}}]]}})}
+ if(cmd==="/id")return say(env,chat,"Твой Telegram ID: "+user.id);
+ if(cmd==="/admin"){if(!isAdmin(user.id))return say(env,chat,"Нет доступа.");const a=await env.DB.prepare("SELECT COUNT(*) n FROM participants").first(),b=await env.DB.prepare("SELECT COUNT(*) n FROM participants WHERE status='pending'").first(),c=await env.DB.prepare("SELECT COUNT(*) n FROM envelopes WHERE claimed_by IS NOT NULL").first(),d=await env.DB.prepare("SELECT COUNT(*) n FROM envelopes WHERE revealed_at IS NOT NULL").first();return say(env,chat,`ALTER-EGO ADMIN\nУчастников: ${a.n}\nОжидают: ${b.n}\nВыбрано конвертов: ${c.n}\nРаскрыто: ${d.n}\nРегистрация: ${await setting(env.DB,"registration_open")}\nВыбор: ${await setting(env.DB,"draw_open")}\nРаскрытие: ${await setting(env.DB,"reveal_open")}\n\n/approve ID\n/openreg /closereg\n/opendraw /closedraw\n/openreveal /closereveal\n/pending /pauseall /resumeall`)}
+ if(!isAdmin(user.id))return say(env,chat,"Нет доступа.");
+ if(["/openreg","/closereg","/opendraw","/closedraw","/openreveal","/closereveal","/pauseall","/resumeall"].includes(cmd)){const map={"/openreg":["registration_open","1"],"/closereg":["registration_open","0"],"/opendraw":["draw_open","1"],"/closedraw":["draw_open","0"],"/openreveal":["reveal_open","1"],"/closereveal":["reveal_open","0"],"/pauseall":["pause_all","1"],"/resumeall":["pause_all","0"]};await setSetting(env.DB,...map[cmd]);await env.DB.prepare("INSERT INTO admin_logs(admin_id,action,details) VALUES(?,?,?)").bind(String(user.id),cmd,"").run();return say(env,chat,"Готово: "+cmd)}
+ if(cmd==="/pending"){const r=await env.DB.prepare("SELECT telegram_id,display_name,pubg_nickname FROM participants WHERE status='pending' ORDER BY created_at").all();return say(env,chat,r.results.length?r.results.map(x=>`${x.display_name||"Участник"} | ${x.pubg_nickname||"без ника"} | ${x.telegram_id}`).join("\n"):"Нет ожидающих заявок.")}
+ if(cmd==="/approve"){const id=text.split(/\s+/)[1];if(!id)return say(env,chat,"Формат: /approve TELEGRAM_ID");const r=await env.DB.prepare("UPDATE participants SET status='approved' WHERE telegram_id=? AND status='pending'").bind(id).run();if(!r.meta?.changes)return say(env,chat,"Ожидающая заявка не найдена.");await env.DB.prepare("INSERT INTO admin_logs(admin_id,action,details) VALUES(?,?,?)").bind(String(user.id),"approve",id).run();await say(env,chat,"Участник допущен к розыгрышу.");try{await say(env,id,"🎉 ТЫ В ИГРЕ! Твоя заявка ALTER-EGO одобрена.")}catch(e){}}
 }
-
-document.getElementById('submitRegistration').onclick=async()=>{
-  const pubg_id=document.getElementById('pubgId').value.trim();
-  const pubg_nickname=document.getElementById('pubgNickname').value.trim();
-  const wish=document.getElementById('wish').value.trim();
-
-  if(!pubg_id||!pubg_nickname||!wish) {
-    statusEl.textContent='Заполни все три поля.';
-    return;
-  }
-
-  const button=document.getElementById('submitRegistration');
-  button.disabled=true;
-  statusEl.textContent='Отправляем заявку…';
-
-  try {
-    const d=await api('/api/register',{pubg_id,pubg_nickname,wish});
-    hideSections();
-
-    if(d.status==='approved') {
-      statusEl.textContent='Данные сохранены. Ты уже допущен(а) к розыгрышу!';
-      await loadEnvelopes();
-    } else {
-      waiting.hidden=false;
-      statusEl.textContent='Заявка отправлена администрации ALTER-EGO.';
-    }
-  } catch(e) {
-    statusEl.textContent=e.message;
-  } finally {
-    button.disabled=false;
-  }
-};
-
-async function loadEnvelopes() {
-  try {
-    const d=await api('/api/envelopes');
-    statusEl.textContent=d.message||'Выбери один закрытый конверт';
-
-    if(d.claimed) {
-      result.style.display='block';
-      prize.textContent=d.claimed.prize_title;
-      return;
-    }
-
-    grid.innerHTML='';
-    d.envelopes.forEach(n=>{
-      const b=document.createElement('button');
-      b.className='env';
-      b.innerHTML='✉️<small>КОНВЕРТ №'+n+'</small>';
-      b.onclick=()=>claim(n);
-      grid.appendChild(b);
-    });
-  } catch(e) {
-    statusEl.textContent=e.message;
-  }
-}
-
-let claiming=false;
-
-async function claim(n) {
-  if(claiming)return;
-  if(!confirm('Выбрать конверт №'+n+'? Выбор будет окончательным.'))return;
-
-  claiming=true;
-  grid.querySelectorAll('button').forEach(b=>b.disabled=true);
-  statusEl.textContent='Закрепляем конверт…';
-
-  try {
-    const d=await api('/api/claim',{envelope:n});
-    grid.innerHTML='';
-    result.style.display='block';
-    prize.textContent=d.prize_title;
-    statusEl.textContent='Твой конверт выбран ❤️';
-    tg?.HapticFeedback?.notificationOccurred('success');
-  } catch(e) {
-    statusEl.textContent=e.message;
-    await loadEnvelopes();
-  } finally {
-    claiming=false;
-  }
-}
-
-startApp();
-</script>
-</body>
-</html>`;
-
-const reply=(data,status=200)=>new Response(JSON.stringify(data),{
-  status,
-  headers:{"content-type":"application/json; charset=utf-8"}
-});
-
-const isAdmin=(env,id)=>String(id)===ADMIN_ID;
-
-async function tg(env,method,payload) {
-  if(!env.TELEGRAM_BOT_TOKEN)throw new Error("Не задан TELEGRAM_BOT_TOKEN.");
-  const r=await fetch(
-    \`https://api.telegram.org/bot\${env.TELEGRAM_BOT_TOKEN}/\${method}\`,
-    {
-      method:"POST",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify(payload)
-    }
-  );
-  const d=await r.json();
-  if(!d.ok)throw new Error(d.description||"Telegram API error");
-  return d.result;
-}
-
-async function say(env,chatId,text,extra={}) {
-  return tg(env,"sendMessage",{chat_id:chatId,text,...extra});
-}
-
-async function setting(db,key,fallback="0") {
-  const r=await db.prepare(
-    "SELECT setting_value FROM event_settings WHERE setting_key=?"
-  ).bind(key).first();
-  return r?.setting_value??fallback;
-}
-
-async function setSetting(db,key,value) {
-  await db.prepare(
-    "INSERT INTO event_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value"
-  ).bind(key,String(value)).run();
-}
-
-async function participant(db,id) {
-  return db.prepare(
-    "SELECT * FROM participants WHERE telegram_id=?"
-  ).bind(String(id)).first();
-}
-
-async function botUpdate(env,u) {
-  const m=u.message;
-  if(!m?.text)return;
-
-  const chat=m.chat.id;
-  const user=m.from;
-  const text=m.text.trim();
-  const cmd=text.split(/\s+/)[0].split("@")[0];
-
-  if(cmd==="/start") {
-    const open=await setting(env.DB,"registration_open","0");
-    const p=await participant(env.DB,user.id);
-
-    if(!p&&open!=="1") {
-      return say(env,chat,
-        "🎅 ALTER-EGO SECRET SANTA\nРегистрация пока закрыта. Следи за объявлениями клана."
-      );
-    }
-
-    return say(env,chat,
-      "🎅 ALTER-EGO SECRET SANTA\n\nОткрой приложение, чтобы заполнить заявку или посмотреть своё участие.",
-      {
-        reply_markup:{
-          inline_keyboard:[[
-            {text:"Открыть приложение 💌",web_app:{url:APP_URL}}
-          ]]
-        }
-      }
-    );
-  }
-
-  if(cmd==="/id") {
-    return say(env,chat,"Твой Telegram ID: "+user.id);
-  }
-
-  if(cmd==="/admin") {
-    if(!isAdmin(env,user.id))return say(env,chat,"Нет доступа.");
-
-    const p=await env.DB.prepare("SELECT COUNT(*) n FROM participants").first();
-    const pending=await env.DB.prepare("SELECT COUNT(*) n FROM participants WHERE status='pending'").first();
-    const claimed=await env.DB.prepare("SELECT COUNT(*) n FROM envelopes WHERE claimed_by IS NOT NULL").first();
-
-    return say(env,chat,\`🛠 ALTER-EGO ADMIN
-Участников: \${p.n}
-Ожидают подтверждения: \${pending.n}
-Выбрано конвертов: \${claimed.n}
-Регистрация: \${await setting(env.DB,"registration_open")}
-Выбор конвертов: \${await setting(env.DB,"draw_open")}
-
-Команды:
-/approve TELEGRAM_ID
-/openreg и /closereg
-/opendraw и /closedraw
-/pending\`);
-  }
-
-  if(["/openreg","/closereg","/opendraw","/closedraw","/pending","/approve"].includes(cmd)) {
-    if(!isAdmin(env,user.id))return say(env,chat,"Нет доступа.");
-
-    if(cmd==="/openreg") {
-      await setSetting(env.DB,"registration_open","1");
-      return say(env,chat,"Регистрация открыта.");
-    }
-
-    if(cmd==="/closereg") {
-      await setSetting(env.DB,"registration_open","0");
-      return say(env,chat,"Регистрация закрыта.");
-    }
-
-    if(cmd==="/opendraw") {
-      await setSetting(env.DB,"draw_open","1");
-      return say(env,chat,"Выбор конвертов открыт.");
-    }
-
-    if(cmd==="/closedraw") {
-      await setSetting(env.DB,"draw_open","0");
-      return say(env,chat,"Выбор конвертов закрыт.");
-    }
-
-    if(cmd==="/pending") {
-      const rows=await env.DB.prepare(
-        "SELECT telegram_id,display_name,pubg_id,pubg_nickname FROM participants WHERE status='pending' ORDER BY created_at"
-      ).all();
-
-      return say(env,chat,rows.results.length
-        ?rows.results.map(x=>
-          \`\${x.display_name} | \${x.pubg_nickname||"без ника"} | \${x.telegram_id}\`
-        ).join("\\n")
-        :"Нет заявок на подтверждение."
-      );
-    }
-
-    if(cmd==="/approve") {
-      const id=text.split(/\\s+/)[1];
-      if(!id)return say(env,chat,"Формат: /approve TELEGRAM_ID");
-
-      const res=await env.DB.prepare(
-        "UPDATE participants SET status='approved' WHERE telegram_id=? AND status='pending'"
-      ).bind(id).run();
-
-      if(!res.meta?.changes)return say(env,chat,"Ожидающая заявка не найдена.");
-
-      await say(env,chat,"Участник "+id+" допущен к розыгрышу.");
-
-      try {
-        await say(env,id,"🎉 ТЫ В ИГРЕ!\nТвоя заявка ALTER-EGO одобрена.");
-      } catch(e) {}
-
-      return;
-    }
-  }
-
-  return say(env,chat,"Команды: /start и /id"+(isAdmin(env,user.id)?" или /admin":""));
-}
-
-async function verifyInitData(initData,token) {
-  if(!initData||!token)throw new Error("Открой приложение через Telegram.");
-
-  const p=new URLSearchParams(initData);
-  const hash=p.get("hash");
-  if(!hash)throw new Error("Нет подписи Telegram.");
-  p.delete("hash");
-
-  const check=[...p.entries()]
-    .sort(([a],[b])=>a.localeCompare(b))
-    .map(([k,v])=>\`\${k}=\${v}\`)
-    .join("\\n");
-
-  const enc=new TextEncoder();
-  const k1=await crypto.subtle.importKey(
-    "raw",enc.encode("WebAppData"),
-    {name:"HMAC",hash:"SHA-256"},false,["sign"]
-  );
-  const secret=await crypto.subtle.sign("HMAC",k1,enc.encode(token));
-  const k2=await crypto.subtle.importKey(
-    "raw",secret,{name:"HMAC",hash:"SHA-256"},false,["sign"]
-  );
-  const sig=await crypto.subtle.sign("HMAC",k2,enc.encode(check));
-  const actual=[...new Uint8Array(sig)]
-    .map(b=>b.toString(16).padStart(2,"0")).join("");
-
-  if(actual!==hash)throw new Error("Подпись Telegram не прошла проверку.");
-
-  const auth=Number(p.get("auth_date")||0);
-  if(!auth||Date.now()/1000-auth>86400) {
-    throw new Error("Сессия устарела. Закрой и снова открой приложение.");
-  }
-
-  const user=JSON.parse(p.get("user")||"{}");
-  if(!user.id)throw new Error("Не найден Telegram ID.");
-  return user;
-}
-
-async function getApiUser(req,env) {
-  const body=await req.json();
-  const user=await verifyInitData(body.initData,env.TELEGRAM_BOT_TOKEN);
-  return {body,user};
-}
-
 export default {
-  async fetch(request,env) {
-    const url=new URL(request.url);
-
-    if(url.pathname==="/"&&request.method==="GET") {
-      return new Response("ALTER-EGO SECRET SANTA is running 🎅");
-    }
-
-    if(url.pathname==="/app"&&request.method==="GET") {
-      return new Response(APP_HTML,{
-        headers:{"content-type":"text/html; charset=utf-8"}
-      });
-    }
-
-    if(url.pathname==="/telegram"&&request.method==="POST") {
-      try {
-        await botUpdate(env,await request.json());
-        return new Response("ok");
-      } catch(e) {
-        return new Response("bot error: "+e.message,{status:500});
-      }
-    }
-
-    if(request.method==="POST"&&url.pathname==="/api/profile") {
-      try {
-        const {user}=await getApiUser(request,env);
-        const p=await participant(env.DB,user.id);
-
-        if(!p)return reply({participant:null,complete:false});
-
-        const complete=Boolean(
-          p.pubg_id&&p.pubg_nickname&&p.wish
-        );
-
-        return reply({participant:p,complete});
-      } catch(e) {
-        return reply({error:e.message},400);
-      }
-    }
-
-    if(request.method==="POST"&&url.pathname==="/api/register") {
-      try {
-        const {body,user}=await getApiUser(request,env);
-
-        const pubg_id=String(body.pubg_id||"").trim();
-        const pubg_nickname=String(body.pubg_nickname||"").trim();
-        const wish=String(body.wish||"").trim();
-
-        if(!pubg_id||!pubg_nickname||!wish) {
-          throw new Error("Заполни все три поля.");
-        }
-
-        if(pubg_id.length>30||pubg_nickname.length>50||wish.length>500) {
-          throw new Error("Проверь длину заполненных полей.");
-        }
-
-        if(await setting(env.DB,"registration_open","0")!=="1") {
-          throw new Error("Регистрация закрыта.");
-        }
-
-        const old=await participant(env.DB,user.id);
-
-        if(old) {
-          await env.DB.prepare(
-            "UPDATE participants SET pubg_id=?,pubg_nickname=?,wish=? WHERE telegram_id=?"
-          ).bind(pubg_id,pubg_nickname,wish,String(user.id)).run();
-
-          return reply({
-            ok:true,
-            status:old.status,
-            message:"Данные сохранены."
-          });
-        }
-
-        const name=[user.first_name,user.last_name]
-          .filter(Boolean).join(" ")||user.username||"Участник";
-
-        await env.DB.prepare(
-          "INSERT INTO participants(telegram_id,username,display_name,status,pubg_id,pubg_nickname,wish) VALUES(?,?,?,'pending',?,?,?)"
-        ).bind(
-          String(user.id),user.username||null,name,
-          pubg_id,pubg_nickname,wish
-        ).run();
-
-        return reply({
-          ok:true,
-          status:"pending",
-          message:"Заявка отправлена."
-        });
-      } catch(e) {
-        return reply({error:e.message},400);
-      }
-    }
-
-    if(request.method==="POST"&&url.pathname==="/api/envelopes") {
-      try {
-        const {user}=await getApiUser(request,env);
-        const p=await participant(env.DB,user.id);
-
-        if(!p)throw new Error("Сначала заполни заявку в приложении.");
-        if(p.status!=="approved")throw new Error("Заявка ещё не подтверждена администратором.");
-        if(await setting(env.DB,"draw_open")!=="1") {
-          throw new Error("Выбор конвертов пока закрыт.");
-        }
-
-        const old=await env.DB.prepare(
-          "SELECT envelope_number,prize_title FROM envelopes WHERE claimed_by=?"
-        ).bind(String(user.id)).first();
-
-        if(old)return reply({
-          claimed:old,
-          envelopes:[],
-          message:"У тебя уже есть конверт."
-        });
-
-        const rows=await env.DB.prepare(
-          "SELECT envelope_number FROM envelopes WHERE claimed_by IS NULL ORDER BY envelope_number"
-        ).all();
-
-        return reply({
-          envelopes:rows.results.map(x=>x.envelope_number),
-          message:"Выбери один закрытый конверт 💌"
-        });
-      } catch(e) {
-        return reply({error:e.message},400);
-      }
-    }
-
-    if(request.method==="POST"&&url.pathname==="/api/claim") {
-      try {
-        const {body,user}=await getApiUser(request,env);
-        const p=await participant(env.DB,user.id);
-
-        if(!p)throw new Error("Сначала заполни заявку.");
-        if(p.status!=="approved")throw new Error("Заявка ещё не подтверждена.");
-        if(await setting(env.DB,"draw_open")!=="1") {
-          throw new Error("Выбор конвертов пока закрыт.");
-        }
-
-        const n=Number(body.envelope);
-        if(!Number.isInteger(n)||n<1||n>30) {
-          throw new Error("Номер конверта некорректен.");
-        }
-
-        const upd=await env.DB.prepare(
-          "UPDATE envelopes SET claimed_by=?,claimed_at=datetime('now') WHERE envelope_number=? AND claimed_by IS NULL AND NOT EXISTS(SELECT 1 FROM envelopes WHERE claimed_by=?)"
-        ).bind(String(user.id),n,String(user.id)).run();
-
-        if(!upd.meta?.changes) {
-          const old=await env.DB.prepare(
-            "SELECT envelope_number,prize_title FROM envelopes WHERE claimed_by=?"
-          ).bind(String(user.id)).first();
-
-          if(old)throw new Error("Ты уже выбрал(а) конверт №"+old.envelope_number);
-          throw new Error("Этот конверт уже заняли. Выбери другой.");
-        }
-
-        const won=await env.DB.prepare(
-          "SELECT prize_title,prize_value,prize_type FROM envelopes WHERE envelope_number=? AND claimed_by=?"
-        ).bind(n,String(user.id)).first();
-
-        return reply({envelope:n,...won});
-      } catch(e) {
-        return reply({error:e.message},400);
-      }
-    }
-
-    return new Response("Not found",{status:404});
-  }
+ async fetch(request,env){
+  const url=new URL(request.url);
+  if(request.method==="GET"&&url.pathname==="/")return new Response("ALTER-EGO SECRET SANTA is running 🎅");
+  if(request.method==="GET"&&url.pathname==="/app")return new Response(APP_HTML,{headers:{"content-type":"text/html; charset=utf-8"}});
+  if(request.method==="POST"&&url.pathname==="/telegram"){try{if(env.TELEGRAM_WEBHOOK_SECRET&&request.headers.get("X-Telegram-Bot-Api-Secret-Token")!==env.TELEGRAM_WEBHOOK_SECRET)return new Response("Unauthorized",{status:401});await ensureSchema(env.DB);await botUpdate(env,await request.json());return new Response("ok")}catch(e){return new Response("bot error: "+e.message,{status:500})}}
+  if(request.method!=="POST")return new Response("Not found",{status:404});
+  try{
+   await ensureSchema(env.DB);const {body,user}=await apiContext(request,env);await active(env.DB);
+   if(url.pathname==="/api/profile"){const p=await participant(env.DB,user.id);return reply({participant:p,complete:Boolean(p?.pubg_id&&p?.pubg_nickname&&p?.wish),registrationOpen:await setting(env.DB,"registration_open","0")==="1"})}
+   if(url.pathname==="/api/register"){
+    const id=String(body.pubg_id||"").trim(),nick=String(body.pubg_nickname||"").trim(),wish=String(body.wish||"").trim();if(!id||!nick||!wish)throw Error("Заполни все три поля.");if(id.length>30||nick.length>50||wish.length>500)throw Error("Проверь длину полей.");if(await setting(env.DB,"registration_open","0")!=="1")throw Error("Регистрация закрыта.");
+    const old=await participant(env.DB,user.id);if(old){await env.DB.prepare("UPDATE participants SET pubg_id=?,pubg_nickname=?,wish=? WHERE telegram_id=?").bind(id,nick,wish,String(user.id)).run();return reply({ok:true,status:old.status})}
+         const count=await env.DB.prepare("SELECT COUNT(*) n FROM participants").first(),max=Number(await setting(env.DB,"max_participants","30"));if(count.n>=max)throw Error("Все места заняты.");
+    const name=[user.first_name,user.last_name].filter(Boolean).join(" ")||user.username||"Участник";await env.DB.prepare("INSERT INTO participants(telegram_id,username,display_name,status,pubg_id,pubg_nickname,wish) VALUES(?,?,?,'pending',?,?,?)").bind(String(user.id),user.username||null,name,id,nick,wish).run();return reply({ok:true,status:"pending"});
+   }
+   if(url.pathname==="/api/envelopes"){await approved(env.DB,user.id);const old=await env.DB.prepare("SELECT envelope_number,revealed_at,prize_title,prize_value,prize_type FROM envelopes WHERE claimed_by=?").bind(String(user.id)).first();if(old){const claimed=old.revealed_at?old:{envelope_number:old.envelope_number,revealed_at:null};return reply({claimed,envelopes:[]})}if(await setting(env.DB,"draw_open","0")!=="1")return reply({envelopes:[],message:"Выбор конвертов пока закрыт."});const rows=await env.DB.prepare("SELECT envelope_number FROM envelopes WHERE claimed_by IS NULL ORDER BY envelope_number").all();return reply({envelopes:rows.results.map(x=>x.envelope_number),message:"Выбери один закрытый конверт 💌"})}
+   if(url.pathname==="/api/claim"){await approved(env.DB,user.id);if(await setting(env.DB,"draw_open","0")!=="1")throw Error("Выбор конвертов пока закрыт.");const n=Number(body.envelope);if(!Number.isInteger(n)||n<1||n>30)throw Error("Номер конверта некорректен.");const r=await env.DB.prepare("UPDATE envelopes SET claimed_by=?,claimed_at=datetime('now') WHERE envelope_number=? AND claimed_by IS NULL AND NOT EXISTS(SELECT 1 FROM envelopes WHERE claimed_by=?)").bind(String(user.id),n,String(user.id)).run();if(!r.meta?.changes){const old=await env.DB.prepare("SELECT envelope_number FROM envelopes WHERE claimed_by=?").bind(String(user.id)).first();if(old)throw Error("Ты уже выбрал(а) конверт №"+old.envelope_number);throw Error("Этот конверт уже заняли.")}return reply({ok:true,envelope:n,message:"Конверт закреплён. Содержимое скрыто."})}
+   if(url.pathname==="/api/reveal"){await approved(env.DB,user.id);if(await setting(env.DB,"reveal_open","0")!=="1")throw Error("Раскрытие подарков пока не началось.");const old=await env.DB.prepare("SELECT envelope_number,prize_title,prize_value,prize_type,revealed_at FROM envelopes WHERE claimed_by=?").bind(String(user.id)).first();if(!old)throw Error("Сначала выбери конверт.");if(!old.revealed_at)await env.DB.prepare("UPDATE envelopes SET revealed_at=datetime('now') WHERE claimed_by=? AND revealed_at IS NULL").bind(String(user.id)).run();return reply(await env.DB.prepare("SELECT envelope_number,prize_title,prize_value,prize_type,revealed_at FROM envelopes WHERE claimed_by=?").bind(String(user.id)).first())}
+   if(url.pathname==="/api/publication"){await approved(env.DB,user.id);const row=await env.DB.prepare("SELECT revealed_at FROM envelopes WHERE claimed_by=?").bind(String(user.id)).first();if(!row?.revealed_at)throw Error("Сначала раскрой подарок.");const v=body.visible?1:0;await env.DB.prepare("INSERT INTO result_publications(telegram_id,visible) VALUES(?,?) ON CONFLICT(telegram_id) DO UPDATE SET visible=excluded.visible,updated_at=datetime('now')").bind(String(user.id),v).run();return reply({ok:true,visible:Boolean(v)})}
+   if(url.pathname==="/api/wishes"){if(await setting(env.DB,"wish_wall_open","0")!=="1")return reply({wishes:[],message:"WISH WALL пока закрыта."});const rows=await env.DB.prepare("SELECT telegram_id,wish FROM participants WHERE wish IS NOT NULL AND wish<>'' ORDER BY created_at").all(),wishes=[];for(const x of rows.results){const rr=await env.DB.prepare("SELECT emoji,COUNT(*) n FROM wish_reactions WHERE wish_owner_id=? GROUP BY emoji").bind(x.telegram_id).all(),reactions={};for(const z of rr.results)reactions[z.emoji]=z.n;wishes.push({id:x.telegram_id,wish:x.wish,reactions})}return reply({wishes})}
+   if(url.pathname==="/api/react"){await approved(env.DB,user.id);const allowed=["❤️","😂","🔥","🥹","🎄","👑","✨"],owner=String(body.wish_id||""),emoji=String(body.emoji||"");if(!allowed.includes(emoji))throw Error("Реакция недоступна.");if(owner===String(user.id))throw Error("Нельзя реагировать на собственное пожелание.");const exists=await env.DB.prepare("SELECT telegram_id FROM participants WHERE telegram_id=? AND wish IS NOT NULL").bind(owner).first();if(!exists)throw Error("Пожелание не найдено.");await env.DB.prepare("INSERT INTO wish_reactions(wish_owner_id,reactor_id,emoji) VALUES(?,?,?) ON CONFLICT(wish_owner_id,reactor_id) DO UPDATE SET emoji=excluded.emoji,created_at=datetime('now')").bind(owner,String(user.id),emoji).run();return reply({ok:true})}
+   return reply({error:"Маршрут не найден."},404);
+  }catch(e){return reply({error:e.message||"Внутренняя ошибка."},400)}
+ }
 };
