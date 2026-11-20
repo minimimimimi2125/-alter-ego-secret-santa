@@ -2,7 +2,7 @@
 // Cloudflare bindings/secrets:
 //   DB: D1 database named alter_ego
 //   TELEGRAM_BOT_TOKEN: Telegram bot token (Secret)
-//   const ADMIN_ID = "8998835017";
+//   const ADMIN_IDS = "8998835017";
 //   WEBAPP_URL: https://YOUR-WORKER.workers.dev/app
 
 const APP_HTML = `<!doctype html>
