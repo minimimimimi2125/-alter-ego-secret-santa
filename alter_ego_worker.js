@@ -45,7 +45,7 @@ async function participant(db,id){return db.prepare("SELECT * FROM participants 
 
 async function ensureSchema(db){
  for(const sql of [
- "CREATE TABLE IF NOT EXISTS wish_reactions(id INTEGER PRIMARY KEY AUTOINCREMENT,wish_owner_id TEXT NOT NULL,reactor_id TEXT NOT NULL,emoji TEXT NOT NULL,created_at TEXT DEFAULT(datetime('now')),UNI QUE(wish_owner_id,reactor_id))",
+ "CREATE TABLE IF NOT EXISTS wish_reactions(id INTEGER PRIMARY KEY AUTOINCREMENT,wish_owner_id TEXT NOT NULL,reactor_id TEXT NOT NULL,emoji TEXT NOT NULL,created_at TEXT DEFAULT(datetime('now')),UNIQUE(wish_owner_id,reactor_id))",
  "CREATE TABLE IF NOT EXISTS result_publications(telegram_id TEXT PRIMARY KEY,visible INTEGER NOT NULL DEFAULT 0,updated_at TEXT DEFAULT(datetime('now')))",
  "CREATE TABLE IF NOT EXISTS admin_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,admin_id TEXT NOT NULL,action TEXT NOT NULL,details TEXT,created_at TEXT DEFAULT(datetime('now')))",
  "CREATE TABLE IF NOT EXISTS gift_transfers(id INTEGER PRIMARY KEY AUTOINCREMENT,envelope_number INTEGER NOT NULL,from_user TEXT,to_user TEXT NOT NULL,admin_id TEXT NOT NULL,created_at TEXT DEFAULT(datetime('now')))",
