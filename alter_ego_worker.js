@@ -79,7 +79,6 @@ async function sendOnce(env,key,targets,message,kind){
  const reserved=await env.DB.prepare('INSERT OR IGNORE INTO notification_runs(run_key) VALUES(?)').bind(key).run();if(!reserved.meta?.changes)return;
  for(const id of targets){try{await say(env,id,message);await logNotification(env.DB,id,message,kind)}catch(e){}}
 }
-
 async function runSchedule(env,now=new Date()){
  const st=stageAt(now),stamp=mskStamp(now),day=stamp.slice(0,10),hhmm=stamp.slice(11,16);
  const approvedRows=await env.DB.prepare("SELECT telegram_id FROM participants WHERE status='approved'").all(),ids=approvedRows.results.map(x=>x.telegram_id);const allUsers=(await env.DB.prepare('SELECT telegram_id FROM bot_users').all()).results.map(x=>x.telegram_id);const max=Number(await setting(env.DB,'max_participants','30'));if(approvedRows.results.length>=max)await setSetting(env.DB,'registration_open','0');
@@ -129,6 +128,8 @@ export default {
   const url=new URL(request.url);
   if(request.method==="GET"&&url.pathname==="/")return new Response("ALTER-EGO SECRET SANTA is running 🎅");
   if(request.method==="GET"&&url.pathname==="/app")return new Response(APP_HTML,{headers:{"content-type":"text/html; charset=utf-8"}});
+  if(request.method==="GET"&&url.pathname==="/repair-webhook-e4_4r9hg2U6lwj3sE-XKT1rJzTD6RyTn"){try{if(!env.TELEGRAM_WEBHOOK_SECRET)return new Response("TELEGRAM_WEBHOOK_SECRET is missing",{status:503});await tg(env,"setWebhook",{url:APP_URL.replace('/app','/telegram'),secret_token:env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:["message"],drop_pending_updates:true});return new Response("Webhook repaired. Pending Telegram updates cleared. You can now send /start to the bot.")}catch(e){return new Response("Webhook repair failed: "+e.message,{status:500})}}
+
   if(request.method==="POST"&&url.pathname==="/telegram"){try{if(!env.TELEGRAM_WEBHOOK_SECRET)return new Response("Webhook secret is not configured",{status:503});const update=await request.json(),valid=request.headers.get("X-Telegram-Bot-Api-Secret-Token")===env.TELEGRAM_WEBHOOK_SECRET,setupOnly=!valid&&String(update.message?.from?.id||"")===ADMIN_ID&&String(update.message?.text||"").trim().split(/\s+/)[0].split("@")[0]==="/setwebhook";if(!valid&&!setupOnly)return new Response("Unauthorized",{status:401});await ensureSchema(env.DB);await botUpdate(env,update);return new Response("ok")}catch(e){return new Response("bot error: "+e.message,{status:500})}}
   if(request.method!=="POST")return new Response("Not found",{status:404});
   try{
