@@ -88,7 +88,7 @@ async function runSchedule(env,now=new Date()){
   await sendOnce(env,'wish-wall-open-2026',ids,'✨ WISH WALL открыта! Загляни и поддержи пожелания участников.','wish_wall_open');
   await sendOnce(env,'envelopes-open-2026',ids,'💌 Выбор конвертов открыт! Зайди в приложение ALTER-EGO SECRET SANTA и выбери свой.','draw_open');
  }
- if(day==='2026-12-26'&&hhmm>='15:00')await sendOnce(env,'reveal-open-2026',ids,'🎁 Настало время раскрыть свой подарок! Твой конверт ждёт тебя.','reveal_open'); в ALTER-EGO SECRET SANTA.','reveal_open');
+ if(day==='2026-12-26'&&hhmm>='15:00')await sendOnce(env,'reveal-open-2026',ids,'🎁 Настало время раскрыть свой подарок! Твой конверт ждёт тебя.','reveal_open');
  if(st.reveal){
   const notYet=await env.DB.prepare("SELECT p.telegram_id,e.envelope_number,e.claimed_at FROM participants p JOIN envelopes e ON e.claimed_by=p.telegram_id WHERE p.status='approved' AND e.revealed_at IS NULL").all();
   const start=Date.parse('2026-12-26T15:00:00+03:00'),elapsed=now.getTime()-start;
