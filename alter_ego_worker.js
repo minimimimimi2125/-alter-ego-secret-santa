@@ -79,6 +79,7 @@ async function sendOnce(env,key,targets,message,kind){
  const reserved=await env.DB.prepare('INSERT OR IGNORE INTO notification_runs(run_key) VALUES(?)').bind(key).run();if(!reserved.meta?.changes)return;
  for(const id of targets){try{await say(env,id,message);await logNotification(env.DB,id,message,kind)}catch(e){}}
 }
+
 async function runSchedule(env,now=new Date()){
  const st=stageAt(now),stamp=mskStamp(now),day=stamp.slice(0,10),hhmm=stamp.slice(11,16);
  const approvedRows=await env.DB.prepare("SELECT telegram_id FROM participants WHERE status='approved'").all(),ids=approvedRows.results.map(x=>x.telegram_id);const allUsers=(await env.DB.prepare('SELECT telegram_id FROM bot_users').all()).results.map(x=>x.telegram_id);const max=Number(await setting(env.DB,'max_participants','30'));if(approvedRows.results.length>=max)await setSetting(env.DB,'registration_open','0');
